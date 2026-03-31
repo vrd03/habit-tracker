@@ -6,7 +6,13 @@
 <title>Habit & Task Tracker</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script>
+window.onerror=function(msg,src,line){
+  document.getElementById('startup-wrap').innerHTML='<div style="padding:2rem;font-family:sans-serif;color:red">JS Error: '+msg+'<br>'+src+':'+line+'<br><br><a href="#" onclick="location.reload()">Reload</a></div>';
+  return true;
+};
+</script>
 <style>
 :root{
   --bg:#f7f6f3;--surface:#fff;--surface2:#f0efe9;--surface3:#e8e7e0;
@@ -484,6 +490,12 @@ async function signOut(){
 let dataLoaded=false;
 
 async function initSession(){
+  if(typeof supabase==='undefined'){
+    document.getElementById('startup-wrap').style.display='none';
+    document.getElementById('auth-wrap').style.display='flex';
+    setAuthMsg('Could not load Supabase library. Check your internet connection and refresh.','err');
+    return;
+  }
   try{
     const{data:{session},error}=await sb.auth.getSession();
     document.getElementById('startup-wrap').style.display='none';
