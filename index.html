@@ -370,6 +370,11 @@ code{font-family:var(--mono);font-size:11px;background:var(--surface2);padding:1
           </div>
         </div>
         <div class="metrics" id="metrics-t"></div>
+        <div class="sec-hdr" onclick="toggleSec('topentasks')"><span class="sec-title">Open tasks</span><span class="chevron" id="chev-topentasks">&#9650;</span></div>
+        <div id="body-topentasks">
+          <div class="card" id="open-tasks-list"></div>
+        </div>
+        <div class="spacer"></div>
         <div class="sec-hdr" onclick="toggleSec('tweek')"><span class="sec-title">This week</span><span class="chevron" id="chev-tweek">&#9650;</span></div>
         <div id="body-tweek"><div class="week-grid" id="week-grid"></div></div>
         <div class="spacer"></div>
@@ -437,7 +442,7 @@ let S={habits:[],tasks:[],projects:[],habitLog:{},notes:{h:{},t:{}}};
 let charts={h:null,t:null,modal:null,perHabit:null};
 let hOffset=0,weekOffset=0;
 let trendTabs={h:'7d',t:'7d'},groupTabs={h:'daily',t:'daily'};
-let openSecs={hcl:true,hnotes:true,hmonth:true,htrend:false,himport:false,tweek:true,tprojects:true,tnotes:false,ttrend:false};
+let openSecs={hcl:true,hnotes:true,hmonth:true,htrend:false,himport:false,topentasks:true,tweek:true,tprojects:true,tnotes:false,ttrend:false};
 let modalItemId=null,calViewDate=null,monthViewOffset=0;
 let expandedProjects={},expandedDays={};
 let selectedProjColor='#1D9E75';
@@ -856,7 +861,43 @@ function renderWeekGrid(){
   }).join('');
   document.getElementById('week-grid').innerHTML=html;
 }
-function renderTaskMetrics(){
+function renderOpenTasks(){
+  const el=document.getElementById('open-tasks-list');
+  if(!el)return;
+  const open=S.tasks.filter(t=>!t.done);
+  if(!open.length){el.innerHTML='<div class="empty-state">No open tasks</div>';return;}
+  const today=todayStr();
+  const sorted=[...open].sort((a,b)=>{
+    if(a.date&&b.date)return a.date.localeCompare(b.date);
+    if(a.date)return -1;
+    if(b.date)return 1;
+    return 0;
+  });
+  let lastDate=null;
+  let html='';
+  sorted.forEach(task=>{
+    const proj=task.projectId?S.projects.find(p=>p.id===task.projectId):null;
+    const projTag=proj?`<span class="week-proj-tag" style="background:${proj.color}22;color:${proj.color}">${proj.name}</span>`:'';
+    const isToday=task.date===today;
+    const isPast=task.date&&task.date<today;
+    const dateLabel=task.date?new Date(task.date+'T00:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}):'No date';
+    const dateBucket=task.date||'__nodate__';
+    if(dateBucket!==lastDate){
+      lastDate=dateBucket;
+      const labelColor=isPast?'var(--coral-d)':isToday?'var(--teal-d)':'var(--text3)';
+      const labelBg=isPast?'var(--coral-l)':isToday?'var(--teal-l)':'var(--surface2)';
+      html+=`<div style="font-size:11px;font-weight:500;padding:3px 8px;border-radius:20px;background:${labelBg};color:${labelColor};display:inline-block;margin:8px 0 4px">${isPast?'Overdue: ':isToday?'Today: ':''}${dateLabel}</div>`;
+    }
+    html+=`<div class="item-row">
+      <div class="hcheck" onclick="toggleTask(${task.id})">
+        <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><polyline points="1.5,5.5 4.5,8.5 9.5,2.5" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <span style="flex:1;font-size:13px;color:var(--text)">${task.name}${projTag}</span>
+      <button class="del-btn" onclick="removeTask(${task.id})">&#x2715;</button>
+    </div>`;
+  });
+  el.innerHTML=html;
+}
   const dates=getWeekDates(weekOffset);
   const weekTasks=S.tasks.filter(t=>dates.includes(t.date));
   const weekDone=weekTasks.filter(t=>t.done).length;
@@ -1163,7 +1204,7 @@ function renderAll(){
   renderHabitMetrics();renderHabitList();renderHabitNotes();renderMonthlyHabits();
   renderChart('h');renderHeatmap('h');renderPerHabitChart();
   renderWeekLabel();renderWeekGrid();
-  renderTaskMetrics();renderProjects();renderWeekNotes();
+  renderOpenTasks();renderTaskMetrics();renderProjects();renderWeekNotes();
   renderChart('t');renderHeatmap('t');
 }
 </script>
