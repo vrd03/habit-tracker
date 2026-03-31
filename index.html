@@ -464,25 +464,44 @@ async function doForgot(){
   const{error}=await sb.auth.resetPasswordForEmail(email);
   setAuthMsg(error?error.message:'Password reset email sent — check your inbox.',error?'err':'ok');
 }
-async function signOut(){await sb.auth.signOut();}
+async function signOut(){
+  await sb.auth.signOut();
+  currentUser=null;
+  S={habits:[],tasks:[],projects:[],habitLog:{},notes:{h:{},t:{}}};
+  document.getElementById('loading-wrap').style.display='flex';
+  document.getElementById('app-content').style.display='none';
+  document.getElementById('auth-wrap').style.display='flex';
+  document.getElementById('app-wrap').style.display='none';
+  document.getElementById('auth-email').value='';
+  document.getElementById('auth-pass').value='';
+  setAuthMsg('','');
+}
 
 /* ---- SESSION ---- */
+let dataLoaded=false;
 sb.auth.onAuthStateChange(async(event,session)=>{
-  if(session){
+  if(event==='SIGNED_OUT'){
+    dataLoaded=false;return;
+  }
+  if(session&&!dataLoaded){
+    dataLoaded=true;
     currentUser=session.user;
     document.getElementById('auth-wrap').style.display='none';
     document.getElementById('app-wrap').style.display='block';
     document.getElementById('user-email').textContent=currentUser.email;
+    document.getElementById('loading-wrap').style.display='flex';
+    document.getElementById('app-content').style.display='none';
     setSyncStatus('loading');
-    await loadFromSupabase();
-    document.getElementById('loading-wrap').style.display='none';
-    document.getElementById('app-content').style.display='block';
-    renderAll();
-    setSyncStatus('ok');
-  }else{
-    currentUser=null;
-    document.getElementById('auth-wrap').style.display='flex';
-    document.getElementById('app-wrap').style.display='none';
+    try{
+      await loadFromSupabase();
+      document.getElementById('loading-wrap').style.display='none';
+      document.getElementById('app-content').style.display='block';
+      renderAll();
+      setSyncStatus('ok');
+    }catch(e){
+      setSyncStatus('err');
+      document.getElementById('loading-wrap').innerHTML='<div class="loading-label" style="color:var(--coral)">Failed to load data. Please refresh.</div>';
+    }
   }
 });
 
