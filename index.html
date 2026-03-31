@@ -935,8 +935,7 @@ function renderProjects(){
     const pct=total?Math.round(done/total*100):0;
     const expanded=!!expandedProjects[proj.id];
     const taskRows=tasks.map(task=>{
-      const dateStr=task.date?`<span class="proj-task-date">${fmtShort(task.date)}</span>`:'';
-      return`<div class="proj-task-row">
+      const dateStr=task.date?`<span class="proj-task-date">${fmtShort(task.date)}</span>`:'';      return`<div class="proj-task-row">
         <div class="hcheck${task.done?' done':''}" style="width:16px;height:16px;border-radius:4px" onclick="toggleTask(${task.id})">
           <svg width="9" height="9" viewBox="0 0 9 9" fill="none"><polyline points="1,4.5 3.5,7 8,1.5" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </div>
@@ -959,7 +958,7 @@ function renderProjects(){
         ${taskRows||'<div class="empty-state">No tasks yet</div>'}
         <div class="add-row" style="margin-top:8px">
           <input id="${addId}" type="text" placeholder="Add task to project..." onkeydown="if(event.key==='Enter')addProjTask(${proj.id},'${addId}')"/>
-          <input type="date" id="pdate-${proj.id}" title="Schedule for a day (optional)"/>
+          <input type="date" id="pdate-${proj.id}" title="Schedule for a specific day (optional)"/>
           <button onclick="addProjTask(${proj.id},'${addId}')">+ Add</button>
         </div>
       </div>
@@ -985,7 +984,7 @@ async function removeProject(id){
 async function addProjTask(projId,inputId){
   const inp=document.getElementById(inputId);const name=inp.value.trim();if(!name)return;
   const dateInp=document.getElementById('pdate-'+projId);
-  const date=dateInp?dateInp.value||todayStr():todayStr();
+  const date=dateInp&&dateInp.value?dateInp.value:null;
   const t={id:S.nextId++,name,date,projectId:projId,done:false};
   S.tasks.push(t);inp.value='';if(dateInp)dateInp.value='';
   expandedProjects[projId]=true;renderAll();
