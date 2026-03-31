@@ -484,13 +484,23 @@ async function signOut(){
 let dataLoaded=false;
 
 async function initSession(){
-  const{data:{session}}=await sb.auth.getSession();
-  document.getElementById('startup-wrap').style.display='none';
-  if(session){
-    await handleSession(session);
-  }else{
+  try{
+    const{data:{session},error}=await sb.auth.getSession();
+    document.getElementById('startup-wrap').style.display='none';
+    if(error){
+      document.getElementById('auth-wrap').style.display='flex';
+      setAuthMsg('Connection error: '+error.message,'err');
+      return;
+    }
+    if(session){
+      await handleSession(session);
+    }else{
+      document.getElementById('auth-wrap').style.display='flex';
+    }
+  }catch(e){
+    document.getElementById('startup-wrap').style.display='none';
     document.getElementById('auth-wrap').style.display='flex';
-    document.getElementById('loading-wrap').style.display='none';
+    setAuthMsg('Failed to connect to database: '+e.message,'err');
   }
 }
 
@@ -505,14 +515,23 @@ async function handleSession(session){
   document.getElementById('app-content').style.display='none';
   setSyncStatus('loading');
   try{
-    await loadFromSupabase();
+    await Promise.race([
+      loadFromSupabase(),
+      new Promise((_,reject)=>setTimeout(()=>reject(new Error('Timed out after 10 seconds')),10000))
+    ]);
     document.getElementById('loading-wrap').style.display='none';
     document.getElementById('app-content').style.display='block';
     renderAll();
     setSyncStatus('ok');
   }catch(e){
     setSyncStatus('err');
-    document.getElementById('loading-wrap').innerHTML='<div class="loading-label" style="color:var(--coral)">Failed to load data. Please refresh.</div>';
+    document.getElementById('loading-wrap').innerHTML=`
+      <div class="loading-label" style="color:var(--coral);text-align:center;padding:1rem">
+        Failed to load: ${e.message}<br><br>
+        <button onclick="location.reload()" style="padding:6px 14px;border:0.5px solid var(--border-med);border-radius:var(--r);background:none;color:var(--text);font-family:var(--font);cursor:pointer">Retry</button>
+        &nbsp;
+        <button onclick="signOut()" style="padding:6px 14px;border:0.5px solid var(--border-med);border-radius:var(--r);background:none;color:var(--text);font-family:var(--font);cursor:pointer">Sign out</button>
+      </div>`;
   }
 }
 
