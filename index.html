@@ -898,6 +898,7 @@ function renderOpenTasks(){
   });
   el.innerHTML=html;
 }
+function renderTaskMetrics(){
   const dates=getWeekDates(weekOffset);
   const weekTasks=S.tasks.filter(t=>dates.includes(t.date));
   const weekDone=weekTasks.filter(t=>t.done).length;
