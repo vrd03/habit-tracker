@@ -263,8 +263,11 @@ code{font-family:var(--mono);font-size:11px;background:var(--surface2);padding:1
 </head>
 <body>
 
-<!-- AUTH SCREEN -->
-<div class="auth-wrap" id="auth-wrap">
+<div id="startup-wrap" class="loading-wrap" style="min-height:100vh">
+  <div class="loading-spinner"></div>
+  <div class="loading-label">Loading...</div>
+</div>
+<div class="auth-wrap" id="auth-wrap" style="display:none">
   <div class="auth-box">
     <div class="auth-title">Habit & Task Tracker</div>
     <div class="auth-sub" id="auth-sub">Sign in to access your data from any device.</div>
@@ -479,31 +482,46 @@ async function signOut(){
 
 /* ---- SESSION ---- */
 let dataLoaded=false;
+
+async function initSession(){
+  const{data:{session}}=await sb.auth.getSession();
+  document.getElementById('startup-wrap').style.display='none';
+  if(session){
+    await handleSession(session);
+  }else{
+    document.getElementById('auth-wrap').style.display='flex';
+    document.getElementById('loading-wrap').style.display='none';
+  }
+}
+
+async function handleSession(session){
+  if(dataLoaded)return;
+  dataLoaded=true;
+  currentUser=session.user;
+  document.getElementById('auth-wrap').style.display='none';
+  document.getElementById('app-wrap').style.display='block';
+  document.getElementById('user-email').textContent=currentUser.email;
+  document.getElementById('loading-wrap').style.display='flex';
+  document.getElementById('app-content').style.display='none';
+  setSyncStatus('loading');
+  try{
+    await loadFromSupabase();
+    document.getElementById('loading-wrap').style.display='none';
+    document.getElementById('app-content').style.display='block';
+    renderAll();
+    setSyncStatus('ok');
+  }catch(e){
+    setSyncStatus('err');
+    document.getElementById('loading-wrap').innerHTML='<div class="loading-label" style="color:var(--coral)">Failed to load data. Please refresh.</div>';
+  }
+}
+
 sb.auth.onAuthStateChange(async(event,session)=>{
-  if(event==='SIGNED_OUT'){
-    dataLoaded=false;return;
-  }
-  if(session&&!dataLoaded){
-    dataLoaded=true;
-    currentUser=session.user;
-    document.getElementById('auth-wrap').style.display='none';
-    document.getElementById('app-wrap').style.display='block';
-    document.getElementById('user-email').textContent=currentUser.email;
-    document.getElementById('loading-wrap').style.display='flex';
-    document.getElementById('app-content').style.display='none';
-    setSyncStatus('loading');
-    try{
-      await loadFromSupabase();
-      document.getElementById('loading-wrap').style.display='none';
-      document.getElementById('app-content').style.display='block';
-      renderAll();
-      setSyncStatus('ok');
-    }catch(e){
-      setSyncStatus('err');
-      document.getElementById('loading-wrap').innerHTML='<div class="loading-label" style="color:var(--coral)">Failed to load data. Please refresh.</div>';
-    }
-  }
+  if(event==='SIGNED_OUT'){dataLoaded=false;return;}
+  if(event==='SIGNED_IN'&&session){await handleSession(session);}
 });
+
+initSession();
 
 /* ---- SYNC STATUS ---- */
 function setSyncStatus(state){
