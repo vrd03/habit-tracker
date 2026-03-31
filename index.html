@@ -337,6 +337,18 @@ code{font-family:var(--mono);font-size:11px;background:var(--surface2);padding:1
         <div class="sec-hdr" onclick="toggleSec('hnotes')"><span class="sec-title">Day notes</span><span class="chevron" id="chev-hnotes">&#9650;</span></div>
         <div id="body-hnotes"><div class="card" style="padding:.75rem 1rem"><textarea class="notes-area" id="notes-h" placeholder="Notes for this day..." oninput="saveNotes()"></textarea></div></div>
         <div class="spacer"></div>
+        <div class="sec-hdr" onclick="toggleSec('hmonth')"><span class="sec-title">Monthly view</span><span class="chevron" id="chev-hmonth">&#9650;</span></div>
+        <div id="body-hmonth">
+          <div class="card">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+              <button onclick="changeMonthView(-1)" style="background:none;border:0.5px solid var(--border-med);border-radius:var(--r);padding:3px 10px;cursor:pointer;font-size:12px;color:var(--text2);font-family:var(--font)">&#8592;</button>
+              <span id="month-view-label" style="font-size:13px;font-weight:500;color:var(--text)"></span>
+              <button onclick="changeMonthView(1)" id="month-next-btn" style="background:none;border:0.5px solid var(--border-med);border-radius:var(--r);padding:3px 10px;cursor:pointer;font-size:12px;color:var(--text2);font-family:var(--font)">&#8594;</button>
+            </div>
+            <div id="monthly-habit-grid"></div>
+          </div>
+        </div>
+        <div class="spacer"></div>
         <div class="sec-hdr" onclick="toggleSec('htrend')"><span class="sec-title">Trends</span><span class="chevron" id="chev-htrend">&#9650;</span></div>
         <div id="body-htrend">
           <div class="tabs"><div class="tab active" onclick="setTrendTab('h','7d',this)">7 days</div><div class="tab" onclick="setTrendTab('h','30d',this)">30 days</div><div class="tab" onclick="setTrendTab('h','90d',this)">90 days</div><div class="tab" onclick="setTrendTab('h','1y',this)">1 year</div></div>
@@ -435,8 +447,8 @@ let S={habits:[],tasks:[],projects:[],habitLog:{},notes:{h:{},t:{}}};
 let charts={h:null,t:null,modal:null,perHabit:null};
 let hOffset=0,weekOffset=0;
 let trendTabs={h:'7d',t:'7d'},groupTabs={h:'daily',t:'daily'};
-let openSecs={hcl:true,hnotes:true,htrend:true,himport:false,tweek:true,tprojects:true,tnotes:false,ttrend:false};
-let modalItemId=null,calViewDate=null;
+let openSecs={hcl:true,hnotes:true,hmonth:true,htrend:false,himport:false,tweek:true,tprojects:true,tnotes:false,ttrend:false};
+let modalItemId=null,calViewDate=null,monthViewOffset=0;
 let expandedProjects={},expandedDays={};
 let selectedProjColor='#1D9E75';
 let syncTimeout=null;
@@ -497,8 +509,17 @@ async function initSession(){
     return;
   }
   try{
-    const{data:{session},error}=await sb.auth.getSession();
+    const sessionPromise=sb.auth.getSession();
+    const timeoutPromise=new Promise(resolve=>setTimeout(()=>resolve({timedOut:true,data:{session:null}}),5000));
+    const result=await Promise.race([sessionPromise,timeoutPromise]);
     document.getElementById('startup-wrap').style.display='none';
+    if(result.timedOut){
+      await sb.auth.signOut().catch(()=>{});
+      document.getElementById('auth-wrap').style.display='flex';
+      setAuthMsg('Connection timed out — please sign in again.','err');
+      return;
+    }
+    const{data:{session},error}=result;
     if(error){
       document.getElementById('auth-wrap').style.display='flex';
       setAuthMsg('Connection error: '+error.message,'err');
@@ -512,7 +533,7 @@ async function initSession(){
   }catch(e){
     document.getElementById('startup-wrap').style.display='none';
     document.getElementById('auth-wrap').style.display='flex';
-    setAuthMsg('Failed to connect to database: '+e.message,'err');
+    setAuthMsg('Failed to connect: '+e.message,'err');
   }
 }
 
@@ -537,11 +558,11 @@ async function handleSession(session){
     setSyncStatus('ok');
   }catch(e){
     setSyncStatus('err');
+    dataLoaded=false;
     document.getElementById('loading-wrap').innerHTML=`
-      <div class="loading-label" style="color:var(--coral);text-align:center;padding:1rem">
-        Failed to load: ${e.message}<br><br>
-        <button onclick="location.reload()" style="padding:6px 14px;border:0.5px solid var(--border-med);border-radius:var(--r);background:none;color:var(--text);font-family:var(--font);cursor:pointer">Retry</button>
-        &nbsp;
+      <div class="loading-label" style="color:var(--coral);text-align:center;padding:1rem;max-width:320px">
+        ${e.message}<br><br>
+        <button onclick="location.reload()" style="padding:6px 14px;border:0.5px solid var(--border-med);border-radius:var(--r);background:none;color:var(--text);font-family:var(--font);cursor:pointer;margin-right:8px">Retry</button>
         <button onclick="signOut()" style="padding:6px 14px;border:0.5px solid var(--border-med);border-radius:var(--r);background:none;color:var(--text);font-family:var(--font);cursor:pointer">Sign out</button>
       </div>`;
   }
@@ -562,15 +583,18 @@ function setSyncStatus(state){
 }
 
 /* ---- LOAD FROM SUPABASE ---- */
+async function fetchWithTimeout(promise,label,ms=8000){
+  const timeout=new Promise((_,reject)=>setTimeout(()=>reject(new Error(`${label} timed out`)),ms));
+  return Promise.race([promise,timeout]);
+}
+
 async function loadFromSupabase(){
   const uid=currentUser.id;
-  const[habitsRes,tasksRes,projRes,logRes,notesRes]=await Promise.all([
-    sb.from('habits').select('*').eq('user_id',uid).order('created_at'),
-    sb.from('tasks').select('*').eq('user_id',uid),
-    sb.from('projects').select('*').eq('user_id',uid),
-    sb.from('habit_log').select('*').eq('user_id',uid),
-    sb.from('notes').select('*').eq('user_id',uid),
-  ]);
+  const habitsRes=await fetchWithTimeout(sb.from('habits').select('*').eq('user_id',uid).order('created_at'),'habits');
+  const tasksRes=await fetchWithTimeout(sb.from('tasks').select('*').eq('user_id',uid),'tasks');
+  const projRes=await fetchWithTimeout(sb.from('projects').select('*').eq('user_id',uid),'projects');
+  const logRes=await fetchWithTimeout(sb.from('habit_log').select('*').eq('user_id',uid),'habit_log');
+  const notesRes=await fetchWithTimeout(sb.from('notes').select('*').eq('user_id',uid),'notes');
   S.habits=(habitsRes.data||[]).map(r=>({id:r.local_id,name:r.name}));
   S.tasks=(tasksRes.data||[]).map(r=>({id:r.local_id,name:r.name,date:r.date,projectId:r.project_id,done:r.done}));
   S.projects=(projRes.data||[]).map(r=>({id:r.local_id,name:r.name,notes:r.notes,due:r.due,color:r.color}));
@@ -657,7 +681,83 @@ function toggleSec(name){
   const chev=document.getElementById('chev-'+name);
   chev.className='chevron'+(openSecs[name]?'':' closed');
 }
-function changeDay(delta){hOffset=Math.min(0,hOffset+delta);renderAll();}
+function changeMonthView(delta){
+  monthViewOffset+=delta;
+  const now=new Date();
+  const target=new Date(now.getFullYear(),now.getMonth()+monthViewOffset,1);
+  if(target>now){monthViewOffset--;return;}
+  renderMonthlyHabits();
+}
+
+function renderMonthlyHabits(){
+  const now=new Date();
+  const target=new Date(now.getFullYear(),now.getMonth()+monthViewOffset,1);
+  const year=target.getFullYear(),month=target.getMonth();
+  const label=target.toLocaleDateString('en-US',{month:'long',year:'numeric'});
+  document.getElementById('month-view-label').textContent=label;
+  document.getElementById('month-next-btn').disabled=monthViewOffset>=0;
+  const daysInMonth=new Date(year,month+1,0).getDate();
+  const today=todayStr();
+  const pad=n=>String(n).padStart(2,'0');
+  if(!S.habits.length){
+    document.getElementById('monthly-habit-grid').innerHTML='<div class="empty-state">No habits yet</div>';
+    return;
+  }
+  const dayNums=Array.from({length:daysInMonth},(_,i)=>i+1);
+  let html=`<div style="overflow-x:auto">
+    <table style="border-collapse:collapse;width:100%;font-size:11px">
+      <thead><tr>
+        <th style="text-align:left;padding:4px 8px 4px 0;color:var(--text3);font-weight:500;white-space:nowrap;min-width:100px">Habit</th>
+        ${dayNums.map(d=>{
+          const k=`${year}-${pad(month+1)}-${pad(d)}`;
+          const isToday=k===today;
+          const dow=new Date(k+'T00:00:00').getDay();
+          const isWeekend=dow===0||dow===6;
+          return`<th style="text-align:center;padding:2px 1px;color:${isToday?'var(--teal)':isWeekend?'var(--text2)':'var(--text3)'};font-weight:${isToday?'500':'400'};min-width:22px">${d}</th>`;
+        }).join('')}
+        <th style="text-align:right;padding:4px 0 4px 8px;color:var(--text3);font-weight:500;white-space:nowrap">Rate</th>
+      </tr></thead>
+      <tbody>
+        ${S.habits.map(h=>{
+          let doneCount=0;
+          const cells=dayNums.map(d=>{
+            const k=`${year}-${pad(month+1)}-${pad(d)}`;
+            const future=k>today;
+            const done=!future&&!!(S.habitLog[k]&&S.habitLog[k][h.id]);
+            if(done)doneCount++;
+            const isToday=k===today;
+            let bg=future?'var(--surface2)':done?'var(--teal)':'var(--surface2)';
+            let border=isToday?'1.5px solid var(--teal)':'1px solid transparent';
+            return`<td style="text-align:center;padding:2px 1px">
+              <div onclick="${!future?`toggleHabitOnDate('${k}',${h.id})`:''}
+              " style="width:18px;height:18px;border-radius:3px;background:${bg};border:${border};margin:0 auto;cursor:${future?'default':'pointer'};display:flex;align-items:center;justify-content:center">
+                ${done?`<svg width="9" height="9" viewBox="0 0 9 9" fill="none"><polyline points="1,4.5 3.5,7 8,1.5" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`:''}
+              </div>
+            </td>`;
+          }).join('');
+          const pastDays=dayNums.filter(d=>{const k=`${year}-${pad(month+1)}-${pad(d)}`;return k<=today;}).length;
+          const rate=pastDays?Math.round(doneCount/pastDays*100):0;
+          const rateColor=rate>=70?'var(--teal)':rate>=40?'var(--amber)':'var(--coral)';
+          return`<tr>
+            <td style="padding:4px 8px 4px 0;color:var(--text);white-space:nowrap;font-size:12px;cursor:pointer" onclick="openModal(${h.id})">${h.name}</td>
+            ${cells}
+            <td style="text-align:right;padding:4px 0 4px 8px;color:${rateColor};font-weight:500;white-space:nowrap">${rate}%</td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+  </div>`;
+  document.getElementById('monthly-habit-grid').innerHTML=html;
+}
+
+async function toggleHabitOnDate(dateStr,id){
+  if(!S.habitLog[dateStr])S.habitLog[dateStr]={};
+  const newVal=!S.habitLog[dateStr][id];
+  S.habitLog[dateStr][id]=newVal;
+  if(!newVal)delete S.habitLog[dateStr][id];
+  renderAll();
+  schedSave(()=>dbSaveHabitLog(dateStr,id,newVal));
+}
 function changeWeek(delta){weekOffset=Math.min(0,weekOffset+delta);renderAll();}
 
 /* ---- HABITS ---- */
@@ -1071,7 +1171,7 @@ function renderAll(){
   const hdk=getHabitDK();const isToday=hdk===todayStr();
   document.getElementById('date-h').textContent=isToday?'Today':fmtDate(hdk);
   document.getElementById('next-h').disabled=hOffset>=0;
-  renderHabitMetrics();renderHabitList();renderHabitNotes();
+  renderHabitMetrics();renderHabitList();renderHabitNotes();renderMonthlyHabits();
   renderChart('h');renderHeatmap('h');renderPerHabitChart();
   renderWeekLabel();renderWeekGrid();
   renderTaskMetrics();renderProjects();renderWeekNotes();
