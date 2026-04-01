@@ -754,6 +754,7 @@ async function toggleHabitOnDate(dateStr,id){
   schedSave(()=>dbSaveHabitLog(dateStr,id,newVal));
 }
 function changeWeek(delta){weekOffset=Math.min(0,weekOffset+delta);renderAll();}
+function changeDay(delta){hOffset=Math.min(0,hOffset+delta);renderAll();}
 
 /* ---- HABITS ---- */
 function renderHabitMetrics(){
